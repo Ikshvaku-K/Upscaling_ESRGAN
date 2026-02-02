@@ -1,0 +1,27 @@
+# Virtual Environment
+# This contains local copies of libraries; others should install them via requirements.txt
+venv/
+env/
+.env/
+
+# AI Model Weights
+# These files are often >100MB and will cause GitHub upload errors
+models/*.pth
+models/*.onnx
+
+# Output and Temporary Data
+# Keep your repo clean by not uploading test results and logs
+outputs/
+model_comparison_stats.json
+__pycache__/
+
+# Specific Test/Sample Images
+# Based on your folder, these appear to be local test files
+input_4k.jpg
+minecraft_8k.jpg
+minecraft.jpg
+output_8k.png
+comparison_*.png
+diff_*.jpg
+model_comparison_result.jpg
+tile_padding_test_diff.jpg
