@@ -25,3 +25,18 @@ comparison_*.png
 diff_*.jpg
 model_comparison_result.jpg
 tile_padding_test_diff.jpg
+# Production Pipeline Directories
+inputs/
+inputs_images/
+outputs_images/
+outputs_custom/
+
+# Logs
+upscale_production.log
+upscale_production_images.log
+
+# Individual output files (if created manually)
+*.mp4
+*.mkv
+*.mov
+*.avi

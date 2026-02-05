@@ -1,0 +1,32 @@
+# Production Upscaling Pipeline Configuration
+
+model:
+  name: "RealESRGAN_x4plus"
+  path: "models/RealESRGAN_x4plus.pth"
+  scale: 4
+  tile_size: 0        # 0 for auto, or e.g., 400 for low VRAM
+  tile_pad: 10
+  pre_pad: 0
+  half_precision: true # FP16
+
+io:
+  input_folder: "inputs"
+  output_folder: "outputs"
+  processed_history_file: "processed_history.json"
+  extensions: [".mp4", ".mov", ".avi", ".mkv"]
+
+images:
+  input_folder: "inputs_images"
+  output_folder: "outputs_images"
+  processed_history_file: "processed_images.json"
+  extensions: [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"]
+
+ffmpeg:
+  crf: 20
+  preset: "slow"
+  output_pixel_format: "yuv420p"
+  video_codec: "libx265"
+
+execution:
+  batch_size: 1       # Internal batch size for inference (keep 1 if tile_size=0 or VRAM constrained)
+  max_workers: 1      # Number of parallel videos to process (usually 1 for GPU)

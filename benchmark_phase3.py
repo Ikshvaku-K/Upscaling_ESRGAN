@@ -37,7 +37,7 @@ def run_benchmark():
         tile_pad=10,
         pre_pad=0,
         half=True,         # FP16
-        device=devicepp
+        device=device
     )
 
     # Load 4K image
