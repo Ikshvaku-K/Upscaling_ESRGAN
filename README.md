@@ -97,3 +97,17 @@ When processing large images in tiles (blocks), the edges of each tile can look 
     *   `torch` (PyTorch) for model execution.
     *   `basicsr` / `realesrgan` for model architectures.
     *   `cv2` (OpenCV) for image handling.
+    *   **FFmpeg** (System Requirement): Must be installed for Phase 2 Video Pipeline.
+        *   `sudo apt install ffmpeg`
+
+### **Phase 2: Video Pipeline (`upscale_video_pipeline.py`)**
+*   **Goal**: Professional video upscaling with high efficiency.
+*   **Core Script**: `upscale_video_pipeline.py`
+*   **Features**:
+    *   **FFmpeg Integration**: Fast, robust video decoding/encoding.
+    *   **Batched I/O**: Reads/writes in parallel threads to keep GPU busy.
+    *   **H.265 (HEVC)**: Outputs high-efficiency video.
+*   **Usage**:
+    ```bash
+    python upscale_video_pipeline.py input.mp4 -o output.mp4 -b 4
+    ```
