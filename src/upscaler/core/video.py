@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Dict, Any, Optional
 from tqdm import tqdm
-from benchmarking import BenchmarkTracker
+from upscaler.utils.benchmarking import BenchmarkTracker
 
 # Attempt imports for RealESRGAN
 try:
@@ -34,18 +34,65 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+DEFAULT_CONFIG = {
+    'model': {
+        'name': 'RealESRGAN_x4plus',
+        'path': 'models/RealESRGAN_x4plus.pth',
+        'scale': 4,
+        'tile_size': 0,
+        'tile_pad': 10,
+        'pre_pad': 0,
+        'half_precision': True
+    },
+    'io': {
+        'input_folder': 'inputs',
+        'output_folder': 'outputs',
+        'processed_history_file': 'processed_history.json',
+        'extensions': ['.mp4', '.mov', '.avi', '.mkv']
+    },
+    'ffmpeg': {
+        'crf': 20,
+        'preset': 'slow',
+        'output_pixel_format': 'yuv420p',
+        'video_codec': 'libx265'
+    },
+    'execution': {
+        'batch_size': 1,
+        'max_workers': 1
+    }
+}
+
 class ConfigManager:
-    def __init__(self, config_path: str, args: argparse.Namespace):
+    def __init__(self, config_path: Optional[str], args: argparse.Namespace):
         self.config = self._load_config(config_path)
         self._override_with_args(args)
         self._validate_paths()
 
-    def _load_config(self, path: str) -> Dict[str, Any]:
-        if not os.path.exists(path):
-            logger.error(f"Config file not found: {path}")
-            sys.exit(1)
-        with open(path, 'r') as f:
-            return yaml.safe_load(f)
+    def _load_config(self, path: Optional[str]) -> Dict[str, Any]:
+        config = DEFAULT_CONFIG.copy()
+        
+        if path and os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    user_config = yaml.safe_load(f)
+                    # Deep merge or simple update? For now, simple update of top-level keys
+                    # A true deep merge would be better but keeping it simple.
+                    for key, value in user_config.items():
+                        if isinstance(value, dict) and key in config:
+                            config[key].update(value)
+                        else:
+                            config[key] = value
+                logger.info(f"Loaded configuration from {path}")
+            except Exception as e:
+                logger.warning(f"Failed to load config from {path}: {e}. Using defaults.")
+        elif path and not os.path.join(path) == 'config.yaml': 
+             # Only warn if user specifically requested a non-default path that doesn't exist
+             # If it's just the default 'config.yaml' and it's missing, we silently use defaults.
+             logger.warning(f"Config file not found: {path}. Using defaults.")
+        else:
+             logger.info("Using default configuration.")
+             
+        return config
 
     def _override_with_args(self, args):
         # Override config with CLI args if provided
@@ -61,12 +108,15 @@ class ConfigManager:
     def _validate_paths(self):
         # Ensure directories exist or create them
         os.makedirs(self.config['io']['output_folder'], exist_ok=True)
+        # If using defaults, input folder might not exist if user didn't specify one and "inputs" is missing
         if not os.path.exists(self.config['io']['input_folder']):
+             # If user passed input_folder via CLI, we should have caught it. 
+             # If using default 'inputs' and it doesn't exist, we can't proceed.
              logger.error(f"Input folder does not exist: {self.config['io']['input_folder']}")
+             logger.error("Please create the folder or specify one with --input_folder")
              sys.exit(1)
 
     def get(self, key: str, default=None):
-        # Helper for nested access could be added, but simple dict access is fine for now
         return self.config.get(key, default)
 
 class BatchManager:

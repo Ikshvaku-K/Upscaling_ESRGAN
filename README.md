@@ -87,69 +87,38 @@ When processing large images in tiles (blocks), the edges of each tile can look 
 
 ---
 
-## Setup & Requirements
+## Setup & Installation
 
-1.  **Virtual Environment**: Ensure you are running in the `venv` provided.
-    ```bash
-    source venv/bin/activate
-    ```
-2.  **Dependencies**:
-    *   `torch` (PyTorch) for model execution.
-    *   `basicsr` / `realesrgan` for model architectures.
-    *   `cv2` (OpenCV) for image handling.
-    *   **FFmpeg** (System Requirement): Must be installed for Phase 2 Video Pipeline.
-        *   `sudo apt install ffmpeg`
+The project is packaged as a standard Python library `upscaler`.
 
-### **Phase 2: Video Pipeline (`upscale_video_pipeline.py`)**
-*   **Goal**: Professional video upscaling with high efficiency.
-*   **Core Script**: `upscale_video_pipeline.py`
-*   **Features**:
-    *   **FFmpeg Integration**: Fast, robust video decoding/encoding.
-    *   **Batched I/O**: Reads/writes in parallel threads to keep GPU busy.
-    *   **H.265 (HEVC)**: Outputs high-efficiency video.
-*   **Usage**:
+### Prerequisites
+1.  **NVIDIA GPU** with CUDA drivers installed.
+2.  **FFmpeg** must be installed on your system:
     ```bash
-    python upscale_video_pipeline.py input.mp4 -o output.mp4 -b 4
+    sudo apt install ffmpeg
     ```
 
-### **Phase 4: Extreme Performance (TensorRT)**
-*   **Goal**: Extreme performance via TensorRT and hardware-aware optimization.
-*   **Core Scripts**: `optimize_hardware_config.py`, `convert_trt_engine.py`, `upscale_pipeline_trt.py`.
-*   **Key Features**:
-    *   **Hardware Analysis**: Automatically detects GPU VRAM and Compute Capability to suggest optimal settings.
-    *   **TensorRT Engine**: Converts PyTorch models to optimized Engines (FP32/FP16) for 2-5x speedup.
-    *   **Tiled Inference**: Handles 4K/8K inputs on limited VRAM by splitting images into tiles.
-
-#### **Step 1: hardware Optimization**
-Before running heavy upscaling, check your hardware capabilities and get recommended settings (Batch Size, Tile Size, FP16 support).
+### Install Package
+Clone the repository and install:
 ```bash
-python optimize_hardware_config.py
-```
-*Output Example:*
-```json
-{
-    "batch_size": 2,
-    "tile_size": 512,
-    "fp16": true,
-    "trtexec_workspace": 4096
-}
+pip install .
+# OR for development
+pip install -e .
 ```
 
-#### **Step 2: Build TensorRT Engine**
-Convert the PyTorch model (`.pth` -> `.onnx` -> `.trt`).
-*   **Standard Build (FP32)**:
-    ```bash
-    python convert_trt_engine.py --onnx models/realesrgan.onnx --output models/realesrgan.trt
-    ```
-*   **High Performance (FP16)** (Requires Nvidia Volta/Turing or newer):
-    ```bash
-    python convert_trt_engine.py --onnx models/realesrgan.onnx --output models/realesrgan_fp16.trt --fp16
-    ```
+## Usage
 
-#### **Step 3: Run Inference**
-Upscale a video using the generated engine. Use the `tile_size` suggested by Step 1.
+See [USAGE.md](USAGE.md) for detailed command documentation.
+
+Quick Start:
 ```bash
-python upscale_pipeline_trt.py input.mp4 --engine models/realesrgan_fp16.trt --output output.mp4 --tile 512
+# Check optimization settings
+upscaler optimize
+
+# Upscale Video
+upscaler video --input_folder inputs/ --output_folder outputs/
 ```
-*   `--tile`: Size of chunks to process. Lower this (e.g., 256) if you run out of VRAM.
+
+## Deployment / Publishing
+See [DEPLOYMENT.md](DEPLOYMENT.md) for instructions on how to build and publish this package to PyPI.
 
