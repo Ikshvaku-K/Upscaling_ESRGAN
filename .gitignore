@@ -1,3 +1,18 @@
+# Packaging
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
 # Virtual Environment
 # This contains local copies of libraries; others should install them via requirements.txt
 venv/
@@ -8,12 +23,14 @@ env/
 # These files are often >100MB and will cause GitHub upload errors
 models/*.pth
 models/*.onnx
+models/*.trt
 
 # Output and Temporary Data
 # Keep your repo clean by not uploading test results and logs
 outputs/
 model_comparison_stats.json
 __pycache__/
+*.pyc
 
 # Specific Test/Sample Images
 # Based on your folder, these appear to be local test files
