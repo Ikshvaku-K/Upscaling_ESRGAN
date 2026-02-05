@@ -4,7 +4,7 @@ This repository contains a suite of tools and scripts for upscaling images to 8K
 
 ---
 
-## 🏗️ Project Structure & Phases
+## Project Structure & Phases
 
 ### **Phase 1: Basic Upscaling (`upscale_image.py`)**
 *   **Goal**: Create a simple, robust command-line tool to upscale *any* image to 8K.
@@ -40,7 +40,7 @@ This repository contains a suite of tools and scripts for upscaling images to 8K
 
 ---
 
-## 🤖 Models Used & Features
+## Models Used & Features
 
 | Model Name | Type | Best Used For | Pros | Cons |
 | :--- | :--- | :--- | :--- | :--- |
@@ -50,7 +50,7 @@ This repository contains a suite of tools and scripts for upscaling images to 8K
 
 ---
 
-## 📚 Dictionary of Key Terms
+## Dictionary of Key Terms
 
 ### **Upscaling / Super-Resolution (SR)**
 The process of increasing the resolution of an image (e.g., 4K → 8K) while attempting to reconstruct missing details. AI models "guess" or "hallucinate" these details based on training data.
@@ -87,7 +87,7 @@ When processing large images in tiles (blocks), the edges of each tile can look 
 
 ---
 
-## 🛠️ Setup & Requirements
+## Setup & Requirements
 
 1.  **Virtual Environment**: Ensure you are running in the `venv` provided.
     ```bash
@@ -111,3 +111,45 @@ When processing large images in tiles (blocks), the edges of each tile can look 
     ```bash
     python upscale_video_pipeline.py input.mp4 -o output.mp4 -b 4
     ```
+
+### **Phase 4: Extreme Performance (TensorRT)**
+*   **Goal**: Extreme performance via TensorRT and hardware-aware optimization.
+*   **Core Scripts**: `optimize_hardware_config.py`, `convert_trt_engine.py`, `upscale_pipeline_trt.py`.
+*   **Key Features**:
+    *   **Hardware Analysis**: Automatically detects GPU VRAM and Compute Capability to suggest optimal settings.
+    *   **TensorRT Engine**: Converts PyTorch models to optimized Engines (FP32/FP16) for 2-5x speedup.
+    *   **Tiled Inference**: Handles 4K/8K inputs on limited VRAM by splitting images into tiles.
+
+#### **Step 1: hardware Optimization**
+Before running heavy upscaling, check your hardware capabilities and get recommended settings (Batch Size, Tile Size, FP16 support).
+```bash
+python optimize_hardware_config.py
+```
+*Output Example:*
+```json
+{
+    "batch_size": 2,
+    "tile_size": 512,
+    "fp16": true,
+    "trtexec_workspace": 4096
+}
+```
+
+#### **Step 2: Build TensorRT Engine**
+Convert the PyTorch model (`.pth` -> `.onnx` -> `.trt`).
+*   **Standard Build (FP32)**:
+    ```bash
+    python convert_trt_engine.py --onnx models/realesrgan.onnx --output models/realesrgan.trt
+    ```
+*   **High Performance (FP16)** (Requires Nvidia Volta/Turing or newer):
+    ```bash
+    python convert_trt_engine.py --onnx models/realesrgan.onnx --output models/realesrgan_fp16.trt --fp16
+    ```
+
+#### **Step 3: Run Inference**
+Upscale a video using the generated engine. Use the `tile_size` suggested by Step 1.
+```bash
+python upscale_pipeline_trt.py input.mp4 --engine models/realesrgan_fp16.trt --output output.mp4 --tile 512
+```
+*   `--tile`: Size of chunks to process. Lower this (e.g., 256) if you run out of VRAM.
+
