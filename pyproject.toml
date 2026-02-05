@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "upscaler"
+version = "0.1.0"
+description = "AI Image and Video Upscaling Tool"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "torch",
+    "opencv-python",
+    "numpy",
+    "tqdm",
+    "PyYAML",
+    "basicsr",
+    "realesrgan",
+    "psutil",
+]
+
+[project.scripts]
+upscaler = "upscaler.cli:main"
