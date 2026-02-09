@@ -1,59 +1,35 @@
-# Packaging
-dist/
-build/
-*.egg-info/
-*.egg
-MANIFEST
-.pytest_cache/
-.coverage
-htmlcov/
+# Ignore everything by default
+*
 
-# IDEs
-.vscode/
-.idea/
-*.swp
+# Allow traversing directories
+!*/
 
-# Virtual Environment
-# This contains local copies of libraries; others should install them via requirements.txt
-venv/
-env/
-.env/
+# Whitelist Package Source
+!src/
+!src/**
 
-# AI Model Weights
-# These files are often >100MB and will cause GitHub upload errors
-models/*.pth
-models/*.onnx
-models/*.trt
+# Whitelist Project Metadata & Config
+!pyproject.toml
+!requirements.txt
+!LICENSE
+!.gitignore
 
-# Output and Temporary Data
-# Keep your repo clean by not uploading test results and logs
-outputs/
-model_comparison_stats.json
+# Whitelist Documentation
+!README.md
+!USAGE.md
+!DEPLOYMENT.md
+
+# Explicitly ignore artifacts that might match the whitelist rules
 __pycache__/
 *.pyc
-
-# Specific Test/Sample Images
-# Based on your folder, these appear to be local test files
-input_4k.jpg
-minecraft_8k.jpg
-minecraft.jpg
-output_8k.png
-comparison_*.png
-diff_*.jpg
-model_comparison_result.jpg
-tile_padding_test_diff.jpg
-# Production Pipeline Directories
-inputs/
-inputs_images/
-outputs_images/
-outputs_custom/
-
-# Logs
-upscale_production.log
-upscale_production_images.log
-
-# Individual output files (if created manually)
-*.mp4
-*.mkv
-*.mov
-*.avi
+*.egg-info/
+build/
+dist/
+.DS_Store
+.coverage
+htmlcov/
+.pytest_cache/
+.vscode/
+.idea/
+venv/
+.env/
