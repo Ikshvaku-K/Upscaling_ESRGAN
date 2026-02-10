@@ -18,6 +18,8 @@
 !README.md
 !USAGE.md
 !DEPLOYMENT.md
+!ONNX_TENSORRT_EXPLAINED.md
+
 
 # Explicitly ignore artifacts that might match the whitelist rules
 __pycache__/
