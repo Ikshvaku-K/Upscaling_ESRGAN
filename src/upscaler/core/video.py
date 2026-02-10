@@ -71,12 +71,38 @@ class ConfigManager:
     def _load_config(self, path: Optional[str]) -> Dict[str, Any]:
         config = DEFAULT_CONFIG.copy()
         
+        # 1. Try to load from packaged default config.yaml as the base
+        try:
+            # For Python 3.9+ use importlib.resources.files
+            # For older versions (3.7+) use importlib.resources.open_text
+            import importlib.resources
+            pkg_config = None
+            if sys.version_info >= (3, 9):
+                 ref = importlib.resources.files('upscaler').joinpath('config.yaml')
+                 if ref.is_file():
+                     with ref.open('r') as f:
+                        pkg_config = yaml.safe_load(f)
+            else:
+                 if importlib.resources.is_resource('upscaler', 'config.yaml'):
+                     with importlib.resources.open_text('upscaler', 'config.yaml') as f:
+                        pkg_config = yaml.safe_load(f)
+
+            if pkg_config:
+                # Merge packaged config into code-defined defaults
+                 for key, value in pkg_config.items():
+                    if isinstance(value, dict) and key in config:
+                        config[key].update(value)
+                    else:
+                        config[key] = value
+        except Exception as e:
+            logger.warning(f"Could not load packaged config.yaml: {e}. Using code defaults.")
+
+
+        # 2. Override with user-provided config file
         if path and os.path.exists(path):
             try:
                 with open(path, 'r') as f:
                     user_config = yaml.safe_load(f)
-                    # Deep merge or simple update? For now, simple update of top-level keys
-                    # A true deep merge would be better but keeping it simple.
                     for key, value in user_config.items():
                         if isinstance(value, dict) and key in config:
                             config[key].update(value)
@@ -85,9 +111,8 @@ class ConfigManager:
                 logger.info(f"Loaded configuration from {path}")
             except Exception as e:
                 logger.warning(f"Failed to load config from {path}: {e}. Using defaults.")
-        elif path and not os.path.join(path) == 'config.yaml': 
+        elif path and path != 'config.yaml': 
              # Only warn if user specifically requested a non-default path that doesn't exist
-             # If it's just the default 'config.yaml' and it's missing, we silently use defaults.
              logger.warning(f"Config file not found: {path}. Using defaults.")
         else:
              logger.info("Using default configuration.")
