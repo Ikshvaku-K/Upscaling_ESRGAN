@@ -35,3 +35,8 @@ htmlcov/
 .idea/
 venv/
 .env/
+
+
+# Project organization
+inputs/
+outputs/
