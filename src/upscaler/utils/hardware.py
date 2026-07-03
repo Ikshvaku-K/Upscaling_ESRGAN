@@ -21,7 +21,7 @@ def get_gpu_info():
         info["vram_total_gb"] = props.total_memory / (1024**3)
         info["compute_capability"] = (props.major, props.minor)
         info["cuda_cores"] = props.multi_processor_count * 128 # rough estimate for Ampere/Ada, varies
-    except:
+    except Exception:
         pass
         
     return info

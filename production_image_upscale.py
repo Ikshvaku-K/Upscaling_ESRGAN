@@ -8,7 +8,14 @@ import json
 import logging
 from typing import Dict, Any, Optional
 from tqdm import tqdm
-from benchmarking import BenchmarkTracker
+
+# BenchmarkTracker lives in the packaged source tree; fall back to the local
+# src/ layout when the package isn't pip-installed.
+try:
+    from upscaler.utils.benchmarking import BenchmarkTracker
+except ImportError:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+    from upscaler.utils.benchmarking import BenchmarkTracker
 
 # Attempt imports for RealESRGAN
 try:
@@ -37,8 +44,14 @@ class ConfigManager:
 
     def _load_config(self, path: str) -> Dict[str, Any]:
         if not os.path.exists(path):
-            logger.error(f"Config file not found: {path}")
-            sys.exit(1)
+            # Fall back to the packaged default config shipped in src/upscaler/
+            packaged = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'upscaler', 'config.yaml')
+            if path == 'config.yaml' and os.path.exists(packaged):
+                logger.info(f"'{path}' not found, using packaged default: {packaged}")
+                path = packaged
+            else:
+                logger.error(f"Config file not found: {path}")
+                sys.exit(1)
         with open(path, 'r') as f:
             return yaml.safe_load(f)
 
@@ -128,6 +141,9 @@ class UpscaleWorker:
             logger.error(f"Model path not found: {model_conf['path']}")
             raise FileNotFoundError(f"Model not found at {model_conf['path']}")
 
+        # Half precision is only supported on CUDA; on CPU it crashes or is very slow
+        use_half = model_conf['half_precision'] and self.device.type == 'cuda'
+
         self.upsampler = RealESRGANer(
             scale=model_conf['scale'],
             model_path=model_conf['path'],
@@ -135,7 +151,7 @@ class UpscaleWorker:
             tile=model_conf['tile_size'],
             tile_pad=model_conf['tile_pad'],
             pre_pad=model_conf['pre_pad'],
-            half=model_conf['half_precision'],
+            half=use_half,
             device=self.device
         )
 
@@ -148,7 +164,8 @@ class UpscaleWorker:
 
         try:
             output, _ = self.upsampler.enhance(img, outscale=self.config['model']['scale'])
-            cv2.imwrite(output_path, output)
+            if not cv2.imwrite(output_path, output):
+                raise IOError(f"Could not write output image: {output_path}")
             logger.info(f"Saved: {output_path}")
 
         except Exception as e:

@@ -2,7 +2,6 @@ import argparse
 import sys
 from upscaler.core.image import main as image_main
 from upscaler.core.video import main as video_main
-from upscaler.core.trt_convert import build_engine
 from upscaler.utils.hardware import suggest_settings, get_gpu_info
 
 def optimize_main(args):
@@ -10,6 +9,14 @@ def optimize_main(args):
     suggest_settings(info)
 
 def convert_main(args):
+    # Imported lazily: tensorrt is an optional dependency, and importing it at
+    # module level would break every other subcommand on machines without it.
+    try:
+        from upscaler.core.trt_convert import build_engine
+    except ImportError:
+        print("Error: TensorRT is not installed. Install it with 'pip install tensorrt' "
+              "(matching your CUDA version) to use convert-trt.")
+        sys.exit(1)
     build_engine(args.onnx, args.output, args.fp16, args.verbose)
 
 def main():
@@ -50,22 +57,21 @@ def main():
     args = parser.parse_args()
 
     if args.command == "video":
-        # Hack to pass args to video_main which uses argparse internally
-        sys.argv = [sys.argv[0]] 
-        if args.config: sys.argv.extend(['--config', args.config])
-        if args.input_folder: sys.argv.extend(['--input_folder', args.input_folder])
-        if args.output_folder: sys.argv.extend(['--output_folder', args.output_folder])
-        if args.tile: sys.argv.extend(['--tile', str(args.tile)])
-        if args.scale: sys.argv.extend(['--scale', str(args.scale)])
-        video_main()
+        video_argv = []
+        if args.config: video_argv.extend(['--config', args.config])
+        if args.input_folder: video_argv.extend(['--input_folder', args.input_folder])
+        if args.output_folder: video_argv.extend(['--output_folder', args.output_folder])
+        # `is not None` so that explicit 0 values (e.g. --tile 0) are forwarded
+        if args.tile is not None: video_argv.extend(['--tile', str(args.tile)])
+        if args.scale is not None: video_argv.extend(['--scale', str(args.scale)])
+        video_main(video_argv)
     elif args.command == "image":
-         # Similar hack for image_main
-        sys.argv = [sys.argv[0], args.input, '-n', args.model_name, '-o', args.output, 
-                    '-s', str(args.outscale), '--suffix', args.suffix, '-t', str(args.tile), 
-                    '--tile_pad', str(args.tile_pad), '--pre_pad', str(args.pre_pad)]
-        if args.fp32: sys.argv.append('--fp32')
-        if args.gpu_id is not None: sys.argv.extend(['--gpu-id', str(args.gpu_id)])
-        image_main()
+        image_argv = [args.input, '-n', args.model_name, '-o', args.output,
+                      '-s', str(args.outscale), '--suffix', args.suffix, '-t', str(args.tile),
+                      '--tile_pad', str(args.tile_pad), '--pre_pad', str(args.pre_pad)]
+        if args.fp32: image_argv.append('--fp32')
+        if args.gpu_id is not None: image_argv.extend(['--gpu-id', str(args.gpu_id)])
+        sys.exit(image_main(image_argv))
     elif args.command == "optimize":
         optimize_main(args)
     elif args.command == "convert-trt":

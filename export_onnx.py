@@ -10,19 +10,19 @@ def export_onnx(model_path, output_path, opset=13):
     # RealESRGAN x4 plus parameters
     model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
     
-    if hasattr(model, 'load_state_dict'):
-        try:
-            loadnet = torch.load(model_path, map_location=torch.device('cpu'))
-            if 'params_ema' in loadnet:
-                keyname = 'params_ema'
-            else:
-                keyname = 'params'
-            model.load_state_dict(loadnet[keyname], strict=True)
-        except Exception as e:
-            print(f"Error loading model weights: {e}")
-            return False
-    else:
-        print("Model architecture issue.")
+    try:
+        # weights_only=True prevents pickle-based arbitrary code execution
+        loadnet = torch.load(model_path, map_location=torch.device('cpu'), weights_only=True)
+        if 'params_ema' in loadnet:
+            state_dict = loadnet['params_ema']
+        elif 'params' in loadnet:
+            state_dict = loadnet['params']
+        else:
+            # Checkpoint is a raw state_dict without a wrapper key
+            state_dict = loadnet
+        model.load_state_dict(state_dict, strict=True)
+    except Exception as e:
+        print(f"Error loading model weights: {e}")
         return False
 
     model.eval()

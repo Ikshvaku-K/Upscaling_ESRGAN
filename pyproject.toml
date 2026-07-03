@@ -19,5 +19,14 @@ dependencies = [
     "psutil",
 ]
 
+[project.optional-dependencies]
+# TensorRT acceleration (convert-trt subcommand, trt_run)
+trt = ["tensorrt"]
+# Model download + comparison scripts at the repo root
+scripts = ["requests>=2.32.4", "scikit-image", "beautifultable"]
+
 [project.scripts]
 upscaler = "upscaler.cli:main"
+
+[tool.setuptools.package-data]
+upscaler = ["config.yaml"]

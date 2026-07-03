@@ -5,8 +5,11 @@ import torch
 import queue
 import threading
 import argparse
+import copy
 import os
+import shutil
 import sys
+import tempfile
 import time
 import yaml
 import json
@@ -69,7 +72,9 @@ class ConfigManager:
         self._validate_paths()
 
     def _load_config(self, path: Optional[str]) -> Dict[str, Any]:
-        config = DEFAULT_CONFIG.copy()
+        # Deep copy: nested dicts would otherwise be shared with (and mutate)
+        # DEFAULT_CONFIG when merged into below.
+        config = copy.deepcopy(DEFAULT_CONFIG)
         
         # 1. Try to load from packaged default config.yaml as the base
         try:
@@ -206,6 +211,9 @@ class UpscaleWorker:
             logger.error(f"Model path not found: {model_conf['path']}")
             raise FileNotFoundError(f"Model not found at {model_conf['path']}")
 
+        # Half precision is only supported on CUDA; on CPU it crashes or is very slow
+        use_half = model_conf['half_precision'] and self.device.type == 'cuda'
+
         self.upsampler = RealESRGANer(
             scale=model_conf['scale'],
             model_path=model_conf['path'],
@@ -213,7 +221,7 @@ class UpscaleWorker:
             tile=model_conf['tile_size'],
             tile_pad=model_conf['tile_pad'],
             pre_pad=model_conf['pre_pad'],
-            half=model_conf['half_precision'],
+            half=use_half,
             device=self.device
         )
 
@@ -231,32 +239,54 @@ class UpscaleWorker:
 
     def process_video(self, input_path: str, output_path: str):
         logger.info(f"Processing: {input_path}")
-        
+
+        if shutil.which('ffmpeg') is None:
+            raise RuntimeError("ffmpeg executable not found on PATH. Install ffmpeg to process videos.")
+
         try:
             w, h, fps, total_frames = self._get_video_info(input_path)
+            if not fps or fps <= 0:
+                logger.warning(f"Could not determine FPS for {input_path}, defaulting to 30.")
+                fps = 30
             scale = self.config['model']['scale']
             target_w = w * scale
             target_h = h * scale
-            
+
             # Prepare Queues
             batch_size = self.config['execution']['batch_size']
             read_queue = queue.Queue(maxsize=batch_size * 2)
             write_queue = queue.Queue(maxsize=batch_size * 2)
-            
+
+            # Errors raised inside the I/O threads are collected here and
+            # re-raised in the main thread after the pipeline drains.
+            errors = []
+            abort = threading.Event()
+
             # Start FFmpeg Reader
-            reader_thread = threading.Thread(target=self._reader_worker, args=(input_path, w, h, read_queue), daemon=True)
+            reader_thread = threading.Thread(target=self._reader_worker, args=(input_path, w, h, read_queue, errors, abort), daemon=True)
             reader_thread.start()
-            
+
             # Start FFmpeg Writer
-            writer_thread = threading.Thread(target=self._writer_worker, args=(output_path, target_w, target_h, fps, write_queue), daemon=True)
+            writer_thread = threading.Thread(target=self._writer_worker, args=(output_path, target_w, target_h, fps, write_queue, errors, abort), daemon=True)
             writer_thread.start()
-            
+
             # Inference Loop
-            self._inference_loop(read_queue, write_queue, total_frames, batch_size)
-            
+            try:
+                self._inference_loop(read_queue, write_queue, total_frames, batch_size)
+            except BaseException:
+                # Stop the I/O threads before propagating so a failed file
+                # doesn't leak blocked threads and orphaned ffmpeg processes.
+                abort.set()
+                reader_thread.join(timeout=15)
+                writer_thread.join(timeout=15)
+                raise
+
             # Finish
             reader_thread.join()
             writer_thread.join()
+
+            if errors:
+                raise RuntimeError("; ".join(str(e) for e in errors))
             logger.info(f"Finished: {output_path}")
 
         except Exception as e:
@@ -289,25 +319,62 @@ class UpscaleWorker:
         write_queue.put(None) # Signal writer to finish
         pbar.close()
 
-    def _reader_worker(self, path, w, h, read_queue):
+    @staticmethod
+    def _stderr_tail(stderr_file, max_bytes=2000):
+        try:
+            stderr_file.seek(0, os.SEEK_END)
+            size = stderr_file.tell()
+            stderr_file.seek(max(0, size - max_bytes))
+            return stderr_file.read().decode(errors='replace').strip()
+        except Exception:
+            return "<unavailable>"
+
+    def _reader_worker(self, path, w, h, read_queue, errors, abort):
         cmd = [
             'ffmpeg', '-y', '-i', path,
             '-f', 'image2pipe', '-pix_fmt', 'bgr24', '-vcodec', 'rawvideo', '-'
         ]
-        # Hide ffmpeg output
-        p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.DEVNULL, bufsize=10**8)
-        
-        frame_bytes = w * h * 3
-        while True:
-            raw = p.stdout.read(frame_bytes)
-            if len(raw) != frame_bytes:
-                break
-            img = np.frombuffer(raw, dtype=np.uint8).reshape((h, w, 3))
-            read_queue.put(img)
-        read_queue.put(None)
-        p.wait()
+        # Keep stderr in a temp file so failures are diagnosable without
+        # risking a pipe-buffer deadlock.
+        try:
+            with tempfile.TemporaryFile() as stderr_file:
+                p = sp.Popen(cmd, stdout=sp.PIPE, stderr=stderr_file, bufsize=10**8)
+                try:
+                    frame_bytes = w * h * 3
+                    while not abort.is_set():
+                        raw = p.stdout.read(frame_bytes)
+                        if len(raw) != frame_bytes:
+                            break
+                        img = np.frombuffer(raw, dtype=np.uint8).reshape((h, w, 3))
+                        # Bounded put that stays responsive to abort
+                        while not abort.is_set():
+                            try:
+                                read_queue.put(img, timeout=0.5)
+                                break
+                            except queue.Full:
+                                continue
+                    if abort.is_set():
+                        p.kill()
+                    p.wait()
+                    if p.returncode != 0 and not abort.is_set():
+                        errors.append(RuntimeError(f"ffmpeg decoder exited with code {p.returncode}: {self._stderr_tail(stderr_file)}"))
+                except Exception:
+                    p.kill()
+                    p.wait()
+                    raise
+        except Exception as e:
+            errors.append(e)
+        finally:
+            # Always unblock the inference loop, even if ffmpeg failed to start.
+            if abort.is_set():
+                try:
+                    read_queue.put_nowait(None)
+                except queue.Full:
+                    pass
+            else:
+                read_queue.put(None)
 
-    def _writer_worker(self, path, w, h, fps, write_queue):
+    def _writer_worker(self, path, w, h, fps, write_queue, errors, abort):
         ff_conf = self.config['ffmpeg']
         cmd = [
             'ffmpeg', '-y',
@@ -317,25 +384,54 @@ class UpscaleWorker:
             '-preset', ff_conf['preset'], '-pix_fmt', ff_conf['output_pixel_format'],
             path
         ]
-        p = sp.Popen(cmd, stdin=sp.PIPE, stderr=sp.DEVNULL)
-        
-        while True:
-            frame = write_queue.get()
-            if frame is None:
-                break
-            p.stdin.write(frame.tobytes())
-            write_queue.task_done()
-        p.stdin.close()
-        p.wait()
+        p = None
+        failed = False
+        try:
+            with tempfile.TemporaryFile() as stderr_file:
+                try:
+                    p = sp.Popen(cmd, stdin=sp.PIPE, stderr=stderr_file)
+                except Exception as e:
+                    errors.append(e)
+                    failed = True
 
-def main():
+                while True:
+                    try:
+                        frame = write_queue.get(timeout=0.5)
+                    except queue.Empty:
+                        if abort.is_set():
+                            break
+                        continue
+                    if frame is None:
+                        break
+                    if failed:
+                        # Keep draining so the (bounded) queue never blocks
+                        # the inference loop after the encoder dies.
+                        continue
+                    try:
+                        p.stdin.write(frame.tobytes())
+                    except (BrokenPipeError, OSError) as e:
+                        errors.append(RuntimeError(f"ffmpeg encoder pipe broke: {e}"))
+                        failed = True
+
+                if p is not None:
+                    try:
+                        p.stdin.close()
+                    except (BrokenPipeError, OSError):
+                        pass
+                    p.wait()
+                    if p.returncode != 0 and not failed and not abort.is_set():
+                        errors.append(RuntimeError(f"ffmpeg encoder exited with code {p.returncode}: {self._stderr_tail(stderr_file)}"))
+        except Exception as e:
+            errors.append(e)
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Production Video Upscaling Pipeline")
     parser.add_argument('--config', default='config.yaml', help='Path to configuration file')
     parser.add_argument('--input_folder', help='Override input folder')
     parser.add_argument('--output_folder', help='Override output folder')
     parser.add_argument('--tile', type=int, help='Override tile size')
     parser.add_argument('--scale', type=int, help='Override scale factor')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Load Configuration
     config_manager = ConfigManager(args.config, args)

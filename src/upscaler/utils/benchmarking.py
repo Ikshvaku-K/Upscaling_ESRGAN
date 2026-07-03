@@ -24,6 +24,9 @@ class BenchmarkTracker:
         }
         self._running = False
         self._power_thread = None
+        # Initialize so stop() is safe even if start() was never called
+        self.start_time = time.time()
+        self.end_time = self.start_time
 
     def start(self):
         self._running = True
@@ -58,10 +61,12 @@ class BenchmarkTracker:
                 # nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits
                 result = subprocess.run(
                     ['nvidia-smi', '--query-gpu=power.draw', '--format=csv,noheader,nounits'],
-                    capture_output=True, text=True
+                    capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0:
-                    power = float(result.stdout.strip())
+                    # On multi-GPU systems nvidia-smi prints one line per GPU;
+                    # sample the first (the device this pipeline runs on).
+                    power = float(result.stdout.strip().splitlines()[0])
                     self.stats["gpu"]["power_samples"].append(power)
             except Exception as e:
                 # Silently fail for power monitoring to not interrupt main flow
