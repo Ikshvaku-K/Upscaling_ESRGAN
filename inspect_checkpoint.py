@@ -2,7 +2,8 @@ import torch
 
 try:
     path = "models/BSRGAN.pth"
-    checkpoint = torch.load(path, map_location='cpu')
+    # weights_only=True prevents pickle-based arbitrary code execution
+    checkpoint = torch.load(path, map_location='cpu', weights_only=True)
     print("Keys in checkpoint:", checkpoint.keys())
     if isinstance(checkpoint, dict):
         for k in checkpoint.keys():

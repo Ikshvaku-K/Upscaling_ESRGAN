@@ -2,6 +2,7 @@ import cv2
 import torch
 import tensorrt as trt
 import argparse
+import os
 import sys
 import numpy as np
 from realesrgan import RealESRGANer
@@ -76,18 +77,31 @@ def process_video_gen(input_path, output_path, engine_path, tile_size=512, yield
     )
     
     cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open video '{input_path}'")
+        yield (0.0, None)
+        return
+
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0:
+        print("Warning: could not determine FPS, defaulting to 30.")
+        fps = 30
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
+
     out_width = width * 4
     out_height = height * 4
-    
+
     writer = None
     if output_path:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(output_path, fourcc, fps, (out_width, out_height))
+        if not writer.isOpened():
+            print(f"Error: Could not open video writer for '{output_path}'")
+            cap.release()
+            yield (0.0, None)
+            return
     
     print(f"Processing {input_path}")
     
@@ -112,11 +126,14 @@ def process_video_gen(input_path, output_path, engine_path, tile_size=512, yield
                 progress = processed_count / total_frames if total_frames > 0 else 0
                 
                 if yield_results:
-                    # Yield every frame or decimate? Let consumer decide or yield all.
                     # Convert BGR to RGB for UI
                     frame_rgb = cv2.cvtColor(output_frame, cv2.COLOR_BGR2RGB)
                     yield (progress, frame_rgb)
-                    
+                else:
+                    # Still yield per-frame progress so callers (e.g. the CLI
+                    # progress bar) can track it without the frame payload.
+                    yield (progress, None)
+
             except RuntimeError as e:
                 print(f"Error: {e}")
                 break
@@ -138,17 +155,16 @@ def main():
     args = parser.parse_args()
     
     output_path = args.output if args.output else f"{os.path.splitext(args.input)[0]}_trt_tiled.mp4"
-    
+
     pbar = tqdm(unit='frame')
-    for progress, _ in process_video_gen(args.input, output_path, args.engine, args.tile, yield_results=False):
-        pbar.update(1) # This simple update is inaccurate because generator yields frame by frame but pbar needs incremental.
-        # Check specific progress reporting if needed. 
-        # Actually our generator yields per processed frame.
-        pass
-        
+    for progress, frame in process_video_gen(args.input, output_path, args.engine, args.tile, yield_results=False):
+        # The final (1.0, None) yield is a completion sentinel, not a frame.
+        if progress >= 1.0 and frame is None:
+            continue
+        pbar.update(1)
+
     pbar.close()
     print("Done.")
 
 if __name__ == "__main__":
-    import os # Ensure os is imported
     main()

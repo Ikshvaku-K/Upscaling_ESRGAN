@@ -29,6 +29,7 @@ def run_benchmark():
     )
 
     # Load ESRGAN
+    # FP16 is only supported on CUDA; on CPU it crashes or is very slow
     upsampler = RealESRGANer(
         scale=4,
         model_path="models/RealESRGAN_x4plus.pth",
@@ -36,7 +37,7 @@ def run_benchmark():
         tile=512,          # VRAM-safe
         tile_pad=10,
         pre_pad=0,
-        half=True,         # FP16
+        half=(device.type == 'cuda'),
         device=device
     )
 
@@ -44,8 +45,10 @@ def run_benchmark():
     input_filename = "input_4k.jpg"
     if not os.path.exists(input_filename):
         raise FileNotFoundError(f"Input file {input_filename} not found.")
-        
+
     img = cv2.imread(input_filename, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError(f"Could not read image: {input_filename}")
     h, w, c = img.shape
     input_res = f"{w}x{h}"
 

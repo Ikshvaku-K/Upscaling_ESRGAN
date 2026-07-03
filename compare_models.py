@@ -28,7 +28,7 @@ def load_realesrgan(device):
         tile=512,
         tile_pad=10,
         pre_pad=0,
-        half=True,
+        half=(device.type == 'cuda'),
         device=device
     )
     return upsampler
@@ -51,7 +51,8 @@ def load_bsrgan(device):
         raise FileNotFoundError(f"BSRGAN model not found at {model_path}")
 
     # Manually load weights because BSRGAN.pth is a direct state_dict, not {params: ...}
-    state_dict = torch.load(model_path, map_location=device)
+    # weights_only=True prevents pickle-based arbitrary code execution
+    state_dict = torch.load(model_path, map_location=device, weights_only=True)
     
     # Remap keys common in BSRGAN/ESRGAN old models to BasicSR RRDBNet
     new_state_dict = {}
@@ -108,7 +109,9 @@ def load_swinir(device):
     )
     
     model_path = "models/001_classicalSR_DF2K_s64w8_SwinIR-M_x4.pth"
-    pretrained_model = torch.load(model_path)
+    # weights_only=True prevents pickle-based arbitrary code execution;
+    # map_location avoids failures on CPU-only machines
+    pretrained_model = torch.load(model_path, map_location=device, weights_only=True)
     if 'params_ema' in pretrained_model:
         param_key_g = 'params_ema'
     elif 'params' in pretrained_model:
@@ -162,10 +165,10 @@ def compute_color_drift(img1, img2):
     return np.mean(delta_e)
 
 def generate_diff_map(img1, img2):
-    # Absolute difference, amplified
+    # Absolute difference, amplified with saturation (a plain uint8 multiply
+    # would wrap around and corrupt the visualization)
     diff = cv2.absdiff(img1, img2)
-    diff = diff * 5 # Amplify differences
-    return diff
+    return cv2.convertScaleAbs(diff, alpha=5)
 
 def log_vram_usage(tag=""):
     if torch.cuda.is_available():
@@ -187,12 +190,12 @@ def test_tile_padding(crop_img, device):
         tile=256, # Force tiling on small image
         tile_pad=0,
         pre_pad=0,
-        half=True,
+        half=(device.type == 'cuda'),
         device=device
     )
     out_0, _ = upsampler_0.enhance(crop_img, outscale=4)
     del upsampler_0
-    
+
     # Run with Pad 10
     upsampler_10 = RealESRGANer(
         scale=4,
@@ -201,14 +204,14 @@ def test_tile_padding(crop_img, device):
         tile=256, # Force tiling on small image
         tile_pad=10,
         pre_pad=0,
-        half=True,
+        half=(device.type == 'cuda'),
         device=device
     )
     out_10, _ = upsampler_10.enhance(crop_img, outscale=4)
     del upsampler_10
-    
-    # Diff
-    diff = cv2.absdiff(out_0, out_10) * 10 # Amplify
+
+    # Diff (saturating amplification, see generate_diff_map)
+    diff = cv2.convertScaleAbs(cv2.absdiff(out_0, out_10), alpha=10)
     cv2.imwrite("tile_padding_test_diff.jpg", diff)
     print("Tile padding test complete. See tile_padding_test_diff.jpg")
 
@@ -230,6 +233,9 @@ def main():
         return
 
     full_img = cv2.imread(input_filename, cv2.IMREAD_COLOR)
+    if full_img is None:
+        print(f"Error: Could not read image '{input_filename}'.")
+        return
     h, w, c = full_img.shape
     print(f"Input Resolution: {w}x{h}")
 

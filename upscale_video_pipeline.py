@@ -81,6 +81,9 @@ def main():
     # 1. Get Info
     print("Probing video...")
     w, h, fps, total_frames = get_video_info(input_path)
+    if not fps or fps <= 0:
+        print("Warning: could not determine FPS, defaulting to 30.")
+        fps = 30
     print(f"Input: {w}x{h} @ {fps}fps, {total_frames} frames")
     
     target_w = w * args.scale
@@ -97,6 +100,7 @@ def main():
         sys.exit(1)
 
     model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+    # FP16 is only supported on CUDA; on CPU it crashes or is very slow
     upsampler = RealESRGANer(
         scale=4,
         model_path=model_path,
@@ -104,7 +108,7 @@ def main():
         tile=args.tile,
         tile_pad=10,
         pre_pad=0,
-        half=not args.fp32,
+        half=(not args.fp32) and device.type == 'cuda',
         device=device
     )
 
@@ -132,14 +136,19 @@ def main():
         while True:
             frame = write_queue.get()
             if frame is None:
+                # Sentinel must be marked done too, or write_queue.join()
+                # in main() blocks forever.
+                write_queue.task_done()
                 break
             proc.stdin.write(frame.tobytes())
             write_queue.task_done()
         proc.stdin.close()
         proc.wait()
 
-    threading.Thread(target=reader_worker, daemon=True).start()
-    threading.Thread(target=writer_worker, daemon=True).start()
+    reader_thread = threading.Thread(target=reader_worker, daemon=True)
+    writer_thread = threading.Thread(target=writer_worker, daemon=True)
+    reader_thread.start()
+    writer_thread.start()
 
     # 4. Processing Loop
     print(f"Processing (Batch Size: {args.batch_size})...")
@@ -178,9 +187,12 @@ def main():
                 pbar.update(len(batch))
                 batch = []
 
-        # Wait for writer
+        # Wait for writer to consume everything and for ffmpeg to finalize
+        # the output file before declaring success.
         write_queue.put(None)
         write_queue.join()
+        writer_thread.join()
+        reader_thread.join()
         pbar.close()
         print("\nComplete!")
 

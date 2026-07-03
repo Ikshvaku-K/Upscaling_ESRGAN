@@ -46,6 +46,7 @@ def main():
         sys.exit(1)
 
     # Upsampler
+    # FP16 is only supported on CUDA; on CPU it crashes or is very slow
     upsampler = RealESRGANer(
         scale=4,
         model_path=model_path,
@@ -53,7 +54,7 @@ def main():
         tile=args.tile,
         tile_pad=10,
         pre_pad=0,
-        half=True, # FP16
+        half=(device.type == 'cuda'),
         device=device
     )
 
@@ -65,6 +66,9 @@ def main():
 
     # Video Properties
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0:
+        print("Warning: could not determine FPS, defaulting to 30.")
+        fps = 30
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -82,8 +86,12 @@ def main():
 
     # Video Writer
     # using mp4v codec for compatibility
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (output_width, output_height))
+    if not out.isOpened():
+        print(f"Error: Could not open video writer for '{output_path}'")
+        cap.release()
+        sys.exit(1)
 
     print(f"Processing... Output will be saved to {output_path}")
 
