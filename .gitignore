@@ -14,12 +14,11 @@
 !LICENSE
 !.gitignore
 
-# Whitelist Documentation
-!README.md
-!USAGE.md
-!DEPLOYMENT.md
-!ONNX_TENSORRT_EXPLAINED.md
-!SECURITY_AND_BUGFIX_REPORT.md
+# Whitelist Python scripts and documentation
+# (previously only individually-listed files were tracked, which silently
+# dropped new root-level scripts and docs from version control)
+!*.py
+!*.md
 
 
 # Explicitly ignore artifacts that might match the whitelist rules
