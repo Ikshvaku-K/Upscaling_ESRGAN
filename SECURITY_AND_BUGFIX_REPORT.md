@@ -115,14 +115,14 @@ Fixed: ffmpeg presence is checked up front (`shutil.which`); stderr is captured 
 
 ---
 
-## 3. Known Issues Noted, Not Changed (recommendations)
+## 3. Repo Hygiene (resolved in follow-up commit)
 
-These are repo-hygiene items I did not change without your sign-off:
+Items 1–4 were flagged in the initial audit and have since been fixed; item 5 remains a deployment recommendation.
 
-1. **~100 MB of build artifacts are committed**: `models/realesrgan.onnx.data` (64 MB) and `models/realesrgan.trt` (37 MB). TensorRT engines are not portable across GPU/driver/TRT versions, so the `.trt` file is dead weight for everyone else. Recommend removing them from git (`git rm --cached`) and letting `export_onnx.py`/`convert-trt` regenerate them.
-2. **Committed backup files**: `production_upscale.py.bak`, `production_image_upscale.py.bak` — recommend deleting.
-3. **`.gitignore` ignores everything by default** (`*` with whitelist). The root-level scripts (`compare_models.py`, `production_image_upscale.py`, download scripts, …) are tracked only because they predate the rule — new root files (including this report) are silently ignored, which is likely how `config.yaml` disappeared from the repo root. Recommend whitelisting `!*.py` and `!*.md` at the root, or switching to a conventional deny-list.
-4. **README drift**: the README documents `upscale_image.py`, which doesn't exist in the repo (the actual entry points are `production_image_upscale.py` and the `upscaler image` CLI).
+1. ✅ **~100 MB of build artifacts were committed**: `models/realesrgan.onnx.data` (64 MB) and `models/realesrgan.trt` (37 MB). TensorRT engines are not portable across GPU/driver/TRT versions, and the `.onnx.data` external-weights file was committed without its companion `.onnx` index file, making it unusable anyway. **Fixed:** removed from tracking (`git rm --cached`); regenerate locally with `export_onnx.py` / `upscaler convert-trt`. Note: the blobs still exist in older git history — rewriting history (`git filter-repo`) plus a force-push would be needed to fully reclaim clone size.
+2. ✅ **Committed backup files**: `production_upscale.py.bak`, `production_image_upscale.py.bak` were stale pre-fix copies of `src/upscaler/core/video.py` and `production_image_upscale.py`. **Fixed:** deleted.
+3. ✅ **`.gitignore` ignored everything by default** (`*` with a file-by-file whitelist). New root-level files were silently dropped from version control — likely how `config.yaml` disappeared from the repo root. **Fixed:** the whitelist now includes `!*.py` and `!*.md`.
+4. ✅ **README drift**: the README documented `upscale_image.py`, which doesn't exist in the repo. **Fixed:** Phase 1 now points to the real entry points (`upscaler image` CLI / `production_image_upscale.py`).
 5. `requirements.txt` intentionally leaves `torch`/`torchvision` unpinned beyond the basicsr compatibility ceiling; pin exact versions for reproducible deployments.
 
 ---

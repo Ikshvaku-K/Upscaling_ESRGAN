@@ -6,12 +6,12 @@ This repository contains a suite of tools and scripts for upscaling images to 8K
 
 ## Project Structure & Phases
 
-### **Phase 1: Basic Upscaling (`upscale_image.py`)**
+### **Phase 1: Basic Upscaling (`upscaler image`)**
 *   **Goal**: Create a simple, robust command-line tool to upscale *any* image to 8K.
-*   **Core Script**: `upscale_image.py`
+*   **Core Module**: `src/upscaler/core/image.py`, exposed as the `upscaler image` CLI subcommand. For batch-processing whole folders, use `production_image_upscale.py`.
 *   **Usage**:
     ```bash
-    python upscale_image.py input.jpg -o output_8k.png
+    upscaler image input.jpg -o output_8k.png
     ```
 *   **Default Model**: **Real-ESRGAN** (specifically `RealESRGAN_x4plus.pth`).
 *   **Key Features**:
